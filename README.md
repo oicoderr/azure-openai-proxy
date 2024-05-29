@@ -13,7 +13,7 @@
 ## 前期准备与本地运行
 1. ECS 云服务一台
 2. Nginx 服务
-3. 拉取 ChatGPT-Next-Web[下载地址](https://github.com/ChatGPTNextWeb/ChatGPT-Next-Web) 项目
+3. 拉取 ChatGPT-Next-Web[下载地址](https://github.com/ChatGPTNextWeb/ChatGPT-Next-Web)项目
 4. 将 ChatGPT-Next-Web 打包成镜像，如须需要 dalle 模型请[参考](https://github.com/ChatGPTNextWeb/ChatGPT-Next-Web/pull/4349)
 5. logToFile.ts 为日志逻辑，可自行修改
 6. 运行 Docker
@@ -24,4 +24,4 @@
 ## 部署
 - 实践 “前期准备与本地运行” 步骤
 
-## 欢迎批判，如有问题请联系我奥
+## 欢迎批判，如有问题请联系我奥。点个 Star 告别 BUG
