@@ -1,0 +1,31 @@
+# 执行 docker-compose.yml 前请先登录aliyun镜像仓库
+services:
+  chatgpt-web-next:
+    image: chatgpt-web-next:2.12.3
+    ports:
+      - 3030:3000
+    environment:
+      OPENAI_API_KEY:
+      BASE_URL: http://azure-openai-proxy:8080
+      CODE: ""
+      HIDE_USER_API_KEY: 1
+      HIDE_BALANCE_QUERY: 1
+    depends_on:
+      - azure-openai-proxy
+    links:
+      - azure-openai-proxy
+    networks:
+      - chatgpt-proxy
+
+  azure-openai-proxy:
+    image: azure-openai-proxy:1.0.0
+    ports:
+      - 8080:8080
+    volumes:
+      - ./data/logs:/logs
+    networks:
+      - chatgpt-proxy
+
+networks:
+  chatgpt-proxy:
+    driver: bridge
