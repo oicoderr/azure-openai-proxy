@@ -4,10 +4,10 @@ import { config } from "./config.ts";
 const { APIVERSION, KEY1, KEY2 } = config;
 
 const models = [
-  ["resourceNaame1", "gpt-4-turbo-2024-04-09", KEY1],
-  ["resourceNaame1", "gpt-4o-2024-05-13", KEY1],
-  ["resourceNaame2", "gpt-4-vision-preview", KEY2],
-  ["resourceNaame2", "dall-e-3", KEY2]
+  ["resourceName1", "gpt-4-turbo-2024-04-09", KEY1],
+  ["resourceName1", "gpt-4o-2024-05-13", KEY1],
+  ["resourceName2", "gpt-4-vision-preview", KEY2],
+  ["resourceName2", "dall-e-3", KEY2]
 ];
 
 const apiVersion = APIVERSION;
@@ -53,23 +53,77 @@ async function proxyRequest(request: Request, path: string): Promise<Response> {
   try {
     const response = await fetch(fetchAPI, {
       method: request.method,
-      headers: { 
-        "Content-Type": "application/json", 
-        "api-key": modelConfig[2] 
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": modelConfig[2]
       },
       body: typeof body === 'object' ? JSON.stringify(body) : '{}'
     });
+
+    if (!response.ok) {
+      // Azure returned an HTTP error (4xx or 5xx)
+      const azureStatus = response.status;
+      let errorBodyToReturn: string | ReadableStream | null = null;
+      let contentType = "text/plain; charset=utf-8";
+
+      try {
+        // Clone the response to be able to read its body and also potentially stream it
+        const clonedAzureResponse = response.clone();
+        const azureErrorBody = await clonedAzureResponse.json();
+        // If parsing is successful, Azure's error is likely JSON
+        errorBodyToReturn = JSON.stringify(azureErrorBody);
+        contentType = "application/json; charset=utf-8";
+        await LogToFile.log(`Azure API Error (${fetchAPI}) - Status: ${azureStatus}, Body: ${errorBodyToReturn}`, "Error");
+      } catch (jsonParseError) {
+        // Azure's error response was not valid JSON, or another error occurred
+        // Try to get text body as fallback
+        try {
+            errorBodyToReturn = await response.text(); // Use original response as clone might be consumed or also failed
+        } catch (textParseError) {
+            errorBodyToReturn = "Azure returned an error, but its content could not be read.";
+        }
+        await LogToFile.log(`Azure API Error (${fetchAPI}) - Status: ${azureStatus}, Body: ${errorBodyToReturn} (Not JSON: ${jsonParseError.message})`, "Error");
+      }
+
+      return new Response(errorBodyToReturn, {
+        status: azureStatus,
+        headers: {
+          "Content-Type": contentType,
+          "Access-Control-Allow-Origin": "*"
+        }
+      });
+    }
+
+    // If response.ok, proxy the successful response
     return new Response(response.body, {
       status: response.status,
       headers: new Headers({
-        ...Object.fromEntries(response.headers),
-        "Access-Control-Allow-Origin": "*"
+        ...Object.fromEntries(response.headers), // Spread original headers
+        "Access-Control-Allow-Origin": "*"      // Ensure CORS header
       })
     });
+
   } catch (error) {
-    await LogToFile.log(`代理请求失败: ${error}`, "Error", "./");
-    return new Response("Internal Server Error", {
-      status: 500
+    // This catch block handles network errors or other issues with the fetch call itself
+    await LogToFile.log(`代理请求失败 (Network/Fetch Error for ${fetchAPI}): ${error.message || error.toString()}`, "Error");
+    // Differentiate between TypeError (e.g. invalid URL, CORS issues not handled by server) and other errors
+    let clientMessage = "Internal Server Error - Failed to connect to Azure OpenAI service.";
+    let clientStatus = 502; // Bad Gateway
+
+    if (error instanceof TypeError) {
+        // TypeErrors are often client-side issues (e.g. malformed URL if not caught earlier, or network stack issues)
+        // Or could be CSP, mixed content, or other browser-level security blocking the request.
+        clientMessage = `Network or setup error when attempting to reach Azure: ${error.message}`;
+        // For TypeError, 500 might be more appropriate than 502 if it's not strictly an upstream gateway issue
+        clientStatus = 500; 
+    }
+
+    return new Response(clientMessage, {
+      status: clientStatus,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      }
     });
   }
 }
@@ -118,3 +172,6 @@ function handleOPTIONS(): Response {
 serve((req) => req.method === 'OPTIONS' ? handleOPTIONS() : handleRequest(req), {
   port: 8080
 });
+
+// Export for testing
+export { handleRequest, proxyRequest, handleModels };
